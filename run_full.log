@@ -1,0 +1,245 @@
+==> 01_autoencoders.ipynb
+D:\Documents\Temp\Semester 5\Deep Learning LEC\.venv\Lib\site-packages\zmq\_future.py:718: RuntimeWarning: Proactor event loop does not implement add_reader family of methods required for zmq. Registering an additional selector thread for add_reader support via tornado. Use `asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())` to avoid this warning.
+  self._get_loop()
+[IPKernelApp] WARNING | Kernel is running over TCP without encryption. All communication (including code and outputs) is sent in plain text and is susceptible to eavesdropping. Use IPC transport or launch with kernel manager-provisioned CurveZMQ keys to enable transport encryption.
+    selesai dalam 3.7 menit
+==> 02_gans.ipynb
+[IPKernelApp] WARNING | Kernel is running over TCP without encryption. All communication (including code and outputs) is sent in plain text and is susceptible to eavesdropping. Use IPC transport or launch with kernel manager-provisioned CurveZMQ keys to enable transport encryption.
+    selesai dalam 11.4 menit
+==> 03_ddpm.ipynb
+[IPKernelApp] WARNING | Kernel is running over TCP without encryption. All communication (including code and outputs) is sent in plain text and is susceptible to eavesdropping. Use IPC transport or launch with kernel manager-provisioned CurveZMQ keys to enable transport encryption.
+fatal   : Memory allocation failure
+Traceback (most recent call last):
+  File "D:\Documents\Temp\Semester 5\Deep Learning LEC\generative-models-comparison\run_all.py", line 31, in <module>
+    resources={"metadata": {"path": here}}).execute()
+                                            ^^^^^^^^^
+  File "D:\Documents\Temp\Semester 5\Deep Learning LEC\.venv\Lib\site-packages\jupyter_core\utils\__init__.py", line 165, in wrapped
+    return loop.run_until_complete(inner)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "D:\Documents\Temp\Semester 5\Deep Learning LEC\.venv\Lib\site-packages\nbclient\client.py", line 709, in async_execute
+    await self.async_execute_cell(
+  File "D:\Documents\Temp\Semester 5\Deep Learning LEC\.venv\Lib\site-packages\nbclient\client.py", line 1062, in async_execute_cell
+    await self._check_raise_for_error(cell, cell_index, exec_reply)
+  File "D:\Documents\Temp\Semester 5\Deep Learning LEC\.venv\Lib\site-packages\nbclient\client.py", line 918, in _check_raise_for_error
+    raise CellExecutionError.from_cell_and_msg(cell, exec_reply_content)
+nbclient.exceptions.CellExecutionError: An error occurred while executing the following cell:
+------------------
+@torch.no_grad()
+def val_loss(model_ddpm):
+    model_ddpm.model.eval()
+    gen = torch.Generator(device=DEVICE).manual_seed(SEED)
+    tot, n = 0.0, 0
+    for x, _ in val_loader:
+        x0 = to_tanh_range(x.to(DEVICE))
+        t = torch.randint(0, model_ddpm.T, (x0.size(0),), device=DEVICE, generator=gen)
+        noise = torch.randn(x0.shape, device=DEVICE, generator=gen)
+        with torch.autocast(device_type=DEVICE.type, dtype=torch.float16):
+            pred = model_ddpm.model(model_ddpm.q_sample(x0, t, noise), t)
+        tot += torch.nn.functional.mse_loss(pred.float(), noise).item()
+        n += 1
+    return tot / n
+
+
+hist = defaultdict(list)
+for ep in range(1, EPOCHS + 1):
+    unet.train()
+    tot, n = 0.0, 0
+    with EpochTimer() as tm:
+        for x, _ in train_loader:
+            x0 = to_tanh_range(x.to(DEVICE))
+            with torch.autocast(device_type=DEVICE.type, dtype=torch.float16):
+                loss = ddpm.loss(x0)
+            opt.zero_grad(set_to_none=True)
+            scaler.scale(loss).backward()
+            scaler.step(opt)
+            scaler.update()
+            ema.update(unet)
+            l = loss.detach()
+            hist["iter_loss"].append(l)
+            tot += l
+            n += 1
+    hist["epoch_time"].append(tm.seconds)
+    hist["train_loss"].append(float(tot) / n)
+    hist["val_loss"].append(val_loss(DDPM(ema.shadow, T=1000).to(DEVICE)))
+    print(f"[ddpm] epoch {ep:02d} | train {hist['train_loss'][-1]:.4f} | val(EMA) {hist['val_loss'][-1]:.4f} "
+          f"| {tm.seconds:.1f}s")
+
+hist["iter_loss"] = [float(v) for v in hist["iter_loss"]]
+torch.save(unet.state_dict(), os.path.join(CKPT_DIR, "ddpm_unet.pt"))
+torch.save(ema.shadow.state_dict(), os.path.join(CKPT_DIR, "ddpm_unet_ema.pt"))
+save_json(dict(hist), "history_ddpm.json")
+------------------
+
+
+[31m---------------------------------------------------------------------------[39m
+[31mAcceleratorError[39m                          Traceback (most recent call last)
+[36mCell[39m[36m [39m[32mIn[2][39m[32m, line 25[39m
+[32m     21[39m     [38;5;28;01mwith[39;00m EpochTimer() [38;5;28;01mas[39;00m tm:
+[32m     22[39m         [38;5;28;01mfor[39;00m x, _ [38;5;28;01min[39;00m train_loader:
+[32m     23[39m             x0 = to_tanh_range(x.to(DEVICE))
+[32m     24[39m             [38;5;28;01mwith[39;00m torch.autocast(device_type=DEVICE.type, dtype=torch.float16):
+[32m---> [39m[32m25[39m                 loss = ddpm.loss(x0)
+[32m     26[39m             opt.zero_grad(set_to_none=[38;5;28;01mTrue[39;00m)
+[32m     27[39m             scaler.scale(loss).backward()
+[32m     28[39m             scaler.step(opt)
+
+[36mFile [39m[32mD:\Documents\Temp\Semester 5\Deep Learning LEC\generative-models-comparison\models.py:326[39m, in [36mDDPM.loss[39m[34m(self, x0)[39m
+[32m    324[39m t = torch.randint([32m0[39m, [38;5;28mself[39m.T, (x0.size([32m0[39m),), device=x0.device)
+[32m    325[39m noise = torch.randn_like(x0)
+[32m--> [39m[32m326[39m [38;5;28;01mreturn[39;00m [30;43mF[39;49m[30;43m.[39;49m[30;43mmse_loss[39;49m[30;43m([39;49m[30;43mself[39;49m[30;43m.[39;49m[30;43mmodel[39;49m[30;43m([39;49m[30;43mself[39;49m[30;43m.[39;49m[30;43mq_sample[39;49m[30;43m([39;49m[30;43mx0[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mt[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mnoise[39;49m[30;43m)[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mt[39;49m[30;43m)[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mnoise[39;49m[30;43m)[39;49m
+
+[36mFile [39m[32mD:\Documents\Temp\Semester 5\Deep Learning LEC\.venv\Lib\site-packages\torch\nn\functional.py:4341[39m, in [36mmse_loss[39m[34m(input, target, size_average, reduce, reduction, weight)[39m
+[32m   4337[39m         [38;5;28;01mraise[39;00m [38;5;167;01mValueError[39;00m(
+[32m   4338[39m             [33mf[39m[33m"[39m[33mInvalid reduction mode: [39m[38;5;132;01m{[39;00mreduction[38;5;132;01m}[39;00m[33m. Expected one of [39m[33m'[39m[33mnone[39m[33m'[39m[33m, [39m[33m'[39m[33mmean[39m[33m'[39m[33m, [39m[33m'[39m[33msum[39m[33m'[39m[33m.[39m[33m"[39m
+[32m   4339[39m         )
+[32m   4340[39m [38;5;28;01melse[39;00m:
+[32m-> [39m[32m4341[39m     [38;5;28;01mreturn[39;00m [30;43mtorch[39;49m[30;43m.[39;49m[30;43m_C[39;49m[30;43m.[39;49m[30;43m_nn[39;49m[30;43m.[39;49m[30;43mmse_loss[39;49m[30;43m([39;49m
+[32m   4342[39m [30;43m        [39;49m[30;43mexpanded_input[39;49m[30;43m,[39;49m
+[32m   4343[39m [30;43m        [39;49m[30;43mexpanded_target[39;49m[30;43m,[39;49m
+[32m   4344[39m [30;43m        [39;49m[30;43;03m# pyrefly: ignore [bad-argument-type][39;49;00m
+[32m   4345[39m [30;43m        [39;49m[30;43m_Reduction[39;49m[30;43m.[39;49m[30;43mget_enum[39;49m[30;43m([39;49m[30;43mreduction[39;49m[30;43m)[39;49m[30;43m,[39;49m
+[32m   4346[39m [30;43m    [39;49m[30;43m)[39;49m
+
+[31mAcceleratorError[39m: CUDA error: unknown error
+Search for `cudaErrorUnknown' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+
+
+==> 03_ddpm.ipynb
+D:\Documents\Temp\Semester 5\Deep Learning LEC\.venv\Lib\site-packages\zmq\_future.py:718: RuntimeWarning: Proactor event loop does not implement add_reader family of methods required for zmq. Registering an additional selector thread for add_reader support via tornado. Use `asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())` to avoid this warning.
+  self._get_loop()
+[IPKernelApp] WARNING | Kernel is running over TCP without encryption. All communication (including code and outputs) is sent in plain text and is susceptible to eavesdropping. Use IPC transport or launch with kernel manager-provisioned CurveZMQ keys to enable transport encryption.
+fatal   : Memory allocation failure
+Traceback (most recent call last):
+  File "D:\Documents\Temp\Semester 5\Deep Learning LEC\generative-models-comparison\run_all.py", line 31, in <module>
+    resources={"metadata": {"path": here}}).execute()
+                                            ^^^^^^^^^
+  File "D:\Documents\Temp\Semester 5\Deep Learning LEC\.venv\Lib\site-packages\jupyter_core\utils\__init__.py", line 165, in wrapped
+    return loop.run_until_complete(inner)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Lenovo\AppData\Local\Programs\Python\Python312\Lib\asyncio\base_events.py", line 691, in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+  File "D:\Documents\Temp\Semester 5\Deep Learning LEC\.venv\Lib\site-packages\nbclient\client.py", line 709, in async_execute
+    await self.async_execute_cell(
+  File "D:\Documents\Temp\Semester 5\Deep Learning LEC\.venv\Lib\site-packages\nbclient\client.py", line 1062, in async_execute_cell
+    await self._check_raise_for_error(cell, cell_index, exec_reply)
+  File "D:\Documents\Temp\Semester 5\Deep Learning LEC\.venv\Lib\site-packages\nbclient\client.py", line 918, in _check_raise_for_error
+    raise CellExecutionError.from_cell_and_msg(cell, exec_reply_content)
+nbclient.exceptions.CellExecutionError: An error occurred while executing the following cell:
+------------------
+@torch.no_grad()
+def val_loss(model_ddpm):
+    model_ddpm.model.eval()
+    gen = torch.Generator(device=DEVICE).manual_seed(SEED)
+    tot, n = 0.0, 0
+    for x, _ in val_loader:
+        x0 = to_tanh_range(x.to(DEVICE))
+        t = torch.randint(0, model_ddpm.T, (x0.size(0),), device=DEVICE, generator=gen)
+        noise = torch.randn(x0.shape, device=DEVICE, generator=gen)
+        with torch.autocast(device_type=DEVICE.type, dtype=torch.float16):
+            pred = model_ddpm.model(model_ddpm.q_sample(x0, t, noise), t)
+        tot += torch.nn.functional.mse_loss(pred.float(), noise).item()
+        n += 1
+    return tot / n
+
+
+# Checkpoint per epoch: training dapat dilanjutkan (resume) bila proses terhenti di tengah jalan.
+RESUME_PATH = os.path.join(CKPT_DIR, "ddpm_resume.pt")
+hist, start_ep = defaultdict(list), 1
+if os.path.exists(RESUME_PATH) and not QUICK:
+    ck = torch.load(RESUME_PATH, map_location=DEVICE, weights_only=False)
+    unet.load_state_dict(ck["unet"]); ema.shadow.load_state_dict(ck["ema"])
+    opt.load_state_dict(ck["opt"]); scaler.load_state_dict(ck["scaler"])
+    torch.set_rng_state(ck["rng_cpu"]); torch.cuda.set_rng_state(ck["rng_cuda"])
+    train_loader.generator.set_state(ck["rng_loader"])
+    hist.update(ck["hist"]); start_ep = ck["epoch"] + 1
+    print(f"melanjutkan dari epoch {start_ep}")
+
+for ep in range(start_ep, EPOCHS + 1):
+    unet.train()
+    losses = []
+    with EpochTimer() as tm:
+        for x, _ in train_loader:
+            x0 = to_tanh_range(x.to(DEVICE))
+            with torch.autocast(device_type=DEVICE.type, dtype=torch.float16):
+                loss = ddpm.loss(x0)
+            opt.zero_grad(set_to_none=True)
+            scaler.scale(loss).backward()
+            scaler.step(opt)
+            scaler.update()
+            ema.update(unet)
+            losses.append(loss.detach())
+    losses = torch.stack(losses).float().cpu()
+    hist["iter_loss"].extend(losses.tolist())
+    hist["epoch_time"].append(tm.seconds)
+    hist["train_loss"].append(losses.mean().item())
+    hist["val_loss"].append(val_loss(DDPM(ema.shadow, T=1000).to(DEVICE)))
+    print(f"[ddpm] epoch {ep:02d} | train {hist['train_loss'][-1]:.4f} | val(EMA) {hist['val_loss'][-1]:.4f} "
+          f"| {tm.seconds:.1f}s")
+    if not QUICK:
+        torch.save({"unet": unet.state_dict(), "ema": ema.shadow.state_dict(), "opt": opt.state_dict(),
+                    "scaler": scaler.state_dict(), "rng_cpu": torch.get_rng_state(),
+                    "rng_cuda": torch.cuda.get_rng_state(), "rng_loader": train_loader.generator.get_state(),
+                    "hist": dict(hist), "epoch": ep}, RESUME_PATH)
+
+torch.save(unet.state_dict(), os.path.join(CKPT_DIR, "ddpm_unet.pt"))
+torch.save(ema.shadow.state_dict(), os.path.join(CKPT_DIR, "ddpm_unet_ema.pt"))
+save_json(dict(hist), "history_ddpm.json")
+------------------
+
+
+[31m---------------------------------------------------------------------------[39m
+[31mAcceleratorError[39m                          Traceback (most recent call last)
+[36mCell[39m[36m [39m[32mIn[2][39m[32m, line 36[39m
+[32m     32[39m     [38;5;28;01mwith[39;00m EpochTimer() [38;5;28;01mas[39;00m tm:
+[32m     33[39m         [38;5;28;01mfor[39;00m x, _ [38;5;28;01min[39;00m train_loader:
+[32m     34[39m             x0 = to_tanh_range(x.to(DEVICE))
+[32m     35[39m             [38;5;28;01mwith[39;00m torch.autocast(device_type=DEVICE.type, dtype=torch.float16):
+[32m---> [39m[32m36[39m                 loss = ddpm.loss(x0)
+[32m     37[39m             opt.zero_grad(set_to_none=[38;5;28;01mTrue[39;00m)
+[32m     38[39m             scaler.scale(loss).backward()
+[32m     39[39m             scaler.step(opt)
+
+[36mFile [39m[32mD:\Documents\Temp\Semester 5\Deep Learning LEC\generative-models-comparison\models.py:326[39m, in [36mDDPM.loss[39m[34m(self, x0)[39m
+[32m    324[39m t = torch.randint([32m0[39m, [38;5;28mself[39m.T, (x0.size([32m0[39m),), device=x0.device)
+[32m    325[39m noise = torch.randn_like(x0)
+[32m--> [39m[32m326[39m [38;5;28;01mreturn[39;00m [30;43mF[39;49m[30;43m.[39;49m[30;43mmse_loss[39;49m[30;43m([39;49m[30;43mself[39;49m[30;43m.[39;49m[30;43mmodel[39;49m[30;43m([39;49m[30;43mself[39;49m[30;43m.[39;49m[30;43mq_sample[39;49m[30;43m([39;49m[30;43mx0[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mt[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mnoise[39;49m[30;43m)[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mt[39;49m[30;43m)[39;49m[30;43m,[39;49m[30;43m [39;49m[30;43mnoise[39;49m[30;43m)[39;49m
+
+[36mFile [39m[32mD:\Documents\Temp\Semester 5\Deep Learning LEC\.venv\Lib\site-packages\torch\nn\functional.py:4341[39m, in [36mmse_loss[39m[34m(input, target, size_average, reduce, reduction, weight)[39m
+[32m   4337[39m         [38;5;28;01mraise[39;00m [38;5;167;01mValueError[39;00m(
+[32m   4338[39m             [33mf[39m[33m"[39m[33mInvalid reduction mode: [39m[38;5;132;01m{[39;00mreduction[38;5;132;01m}[39;00m[33m. Expected one of [39m[33m'[39m[33mnone[39m[33m'[39m[33m, [39m[33m'[39m[33mmean[39m[33m'[39m[33m, [39m[33m'[39m[33msum[39m[33m'[39m[33m.[39m[33m"[39m
+[32m   4339[39m         )
+[32m   4340[39m [38;5;28;01melse[39;00m:
+[32m-> [39m[32m4341[39m     [38;5;28;01mreturn[39;00m [30;43mtorch[39;49m[30;43m.[39;49m[30;43m_C[39;49m[30;43m.[39;49m[30;43m_nn[39;49m[30;43m.[39;49m[30;43mmse_loss[39;49m[30;43m([39;49m
+[32m   4342[39m [30;43m        [39;49m[30;43mexpanded_input[39;49m[30;43m,[39;49m
+[32m   4343[39m [30;43m        [39;49m[30;43mexpanded_target[39;49m[30;43m,[39;49m
+[32m   4344[39m [30;43m        [39;49m[30;43;03m# pyrefly: ignore [bad-argument-type][39;49;00m
+[32m   4345[39m [30;43m        [39;49m[30;43m_Reduction[39;49m[30;43m.[39;49m[30;43mget_enum[39;49m[30;43m([39;49m[30;43mreduction[39;49m[30;43m)[39;49m[30;43m,[39;49m
+[32m   4346[39m [30;43m    [39;49m[30;43m)[39;49m
+
+[31mAcceleratorError[39m: CUDA error: unknown error
+Search for `cudaErrorUnknown' in https://docs.nvidia.com/cuda/cuda-runtime-api/group__CUDART__TYPES.html for more information.
+
+
+retry 1
+==> 03_ddpm.ipynb
+D:\Documents\Temp\Semester 5\Deep Learning LEC\.venv\Lib\site-packages\zmq\_future.py:718: RuntimeWarning: Proactor event loop does not implement add_reader family of methods required for zmq. Registering an additional selector thread for add_reader support via tornado. Use `asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())` to avoid this warning.
+  self._get_loop()
+[IPKernelApp] WARNING | Kernel is running over TCP without encryption. All communication (including code and outputs) is sent in plain text and is susceptible to eavesdropping. Use IPC transport or launch with kernel manager-provisioned CurveZMQ keys to enable transport encryption.
+=== restart (cudnn.benchmark off) ===
+==> 03_ddpm.ipynb
+D:\Documents\Temp\Semester 5\Deep Learning LEC\.venv\Lib\site-packages\zmq\_future.py:718: RuntimeWarning: Proactor event loop does not implement add_reader family of methods required for zmq. Registering an additional selector thread for add_reader support via tornado. Use `asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())` to avoid this warning.
+  self._get_loop()
+[IPKernelApp] WARNING | Kernel is running over TCP without encryption. All communication (including code and outputs) is sent in plain text and is susceptible to eavesdropping. Use IPC transport or launch with kernel manager-provisioned CurveZMQ keys to enable transport encryption.
+    selesai dalam 41.6 menit
+==> 04_mlp_classifier_limits.ipynb
+D:\Documents\Temp\Semester 5\Deep Learning LEC\.venv\Lib\site-packages\zmq\_future.py:718: RuntimeWarning: Proactor event loop does not implement add_reader family of methods required for zmq. Registering an additional selector thread for add_reader support via tornado. Use `asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())` to avoid this warning.
+  self._get_loop()
+[IPKernelApp] WARNING | Kernel is running over TCP without encryption. All communication (including code and outputs) is sent in plain text and is susceptible to eavesdropping. Use IPC transport or launch with kernel manager-provisioned CurveZMQ keys to enable transport encryption.
+    selesai dalam 1.1 menit
+==> 05_evaluation.ipynb
+[IPKernelApp] WARNING | Kernel is running over TCP without encryption. All communication (including code and outputs) is sent in plain text and is susceptible to eavesdropping. Use IPC transport or launch with kernel manager-provisioned CurveZMQ keys to enable transport encryption.
+    selesai dalam 4.2 menit
